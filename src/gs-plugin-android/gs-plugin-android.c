@@ -231,7 +231,7 @@ fdroid_get_upgradable_cb (GObject *source_object,
 
     if (package_name != NULL) {
       app = gs_app_new (id);
-      gs_app_set_kind (app, AS_COMPONENT_KIND_DESKTOP_APP);
+      gs_app_set_kind (app, AS_COMPONENT_KIND_GENERIC);
       gs_app_set_scope (app, AS_COMPONENT_SCOPE_SYSTEM);
       gs_app_set_bundle_kind (app, AS_BUNDLE_KIND_PACKAGE);
       gs_app_set_allow_cancel (app, FALSE);
@@ -248,7 +248,7 @@ fdroid_get_upgradable_cb (GObject *source_object,
 
       gs_app_add_source (app, id);
       gs_app_set_metadata (app, "GnomeSoftware::PackagingFormat", "apk");
-      gs_app_set_state (app, GS_APP_STATE_UPDATABLE);
+      gs_app_set_state (app, GS_APP_STATE_UPDATABLE_LIVE);
       gs_app_add_kudo (app, GS_APP_KUDO_SANDBOXED_SECURE);
 
       if (current_version != NULL)
@@ -260,18 +260,20 @@ fdroid_get_upgradable_cb (GObject *source_object,
       gs_app_list_add (self->updatable_apps, app);
       upgradable_count++;
 
-      g_debug ("Found upgrade for %s: %s -> %s",
-               package_name,
+      g_debug ("Found upgrade for %s %s: %s -> %s",
+               package_name, name,
                current_version != NULL ? current_version : "unknown",
                available_version != NULL ? available_version : "unknown");
     }
     g_variant_unref (child);
   }
 
-  if (upgradable_count > 0)
+  if (upgradable_count > 0) {
     g_debug ("Found %u upgradable Android apps", upgradable_count);
-  else
+    gs_plugin_updates_changed (GS_PLUGIN (self));
+  } else {
     g_debug ("No upgradable Android apps found");
+  }
 
   g_task_return_pointer (task, g_steal_pointer (&list), g_object_unref);
 }
