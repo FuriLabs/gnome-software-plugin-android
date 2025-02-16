@@ -384,10 +384,10 @@ fdroid_search_cb (GObject *source_object,
     const gchar *license;
     const gchar *author;
     const gchar *web_url;
-    const gchar *icon_url;
+    const gchar *icon_url = NULL;
     const gchar *repository;
     JsonObject *package;
-    const gchar *version;
+    const gchar *version = NULL;
     gboolean is_installed = FALSE;
 
     id = json_object_get_string_member (app_obj, "id");
