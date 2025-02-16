@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Bardia Moshiri <bardia@furilabs.com>
+ * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
