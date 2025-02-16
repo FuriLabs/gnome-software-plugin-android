@@ -1,0 +1,22 @@
+Source: gnome-software-plugin-android
+Maintainer: Bardia Moshiri <bardia@furilabs.com>
+Section: misc
+Priority: optional
+Build-Depends: debhelper-compat (= 13),
+               libglib2.0-dev,
+               pkg-config,
+               gnome-software-dev,
+               libjson-glib-dev,
+               libappstream-dev,
+Standards-Version: 4.7.0
+Vcs-Browser: https://github.com/furilabs/gnome-software-plugin-android
+Vcs-Git: https://github.com/furilabs/gnome-software-plugin-android.git
+
+Package: gnome-software-plugin-android
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends},
+         libglib2.0-0t64,
+         appstream,
+         gnome-software-common,
+         libjson-glib-1.0-0,
+Description: Allow to install Android apps from Android app stores in GNOME software

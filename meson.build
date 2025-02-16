@@ -58,5 +58,3 @@ install_data(
   'data/org.gnome.Software.Plugin.Android.metainfo.xml',
   install_dir: join_paths(get_option('datadir'), 'metainfo'),
 )
-
-#subdir('tests')
