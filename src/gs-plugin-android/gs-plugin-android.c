@@ -86,8 +86,6 @@ fdroid_update_cache_cb (GObject      *source_object,
   GsPluginAndroid *self = g_task_get_source_object (task);
   g_autoptr (GError) error = NULL;
   g_autoptr (GVariant) result = NULL;
-  GVariant *value;
-  gboolean success;
 
   result = g_dbus_proxy_call_finish (G_DBUS_PROXY (source_object), res, &error);
   if (result == NULL) {
@@ -95,12 +93,8 @@ fdroid_update_cache_cb (GObject      *source_object,
     return;
   }
 
-  value = g_variant_get_child_value (result, 0);
-  success = g_variant_get_boolean (value);
-  g_variant_unref (value);
-
   gs_plugin_updates_changed (GS_PLUGIN (self));
-  g_task_return_boolean (task, success);
+  g_task_return_boolean (task, TRUE);
 }
 
 static gboolean
