@@ -262,12 +262,10 @@ fdroid_get_upgradable_cb (GObject *source_object,
     g_variant_unref (child);
   }
 
-  if (upgradable_count > 0) {
+  if (upgradable_count > 0)
     g_debug ("Found %u upgradable Android apps", upgradable_count);
-    gs_plugin_updates_changed (GS_PLUGIN (self));
-  } else {
+  else
     g_debug ("No upgradable Android apps found");
-  }
 
   g_task_return_pointer (task, g_steal_pointer (&list), g_object_unref);
 }
@@ -549,7 +547,6 @@ fdroid_install_app_cb (GObject *source_object,
                        gpointer user_data)
 {
   g_autoptr (GTask) task = g_steal_pointer (&user_data);
-  GsPluginAndroid *self = GS_PLUGIN_ANDROID (g_task_get_source_object (task));
   g_autoptr (GError) local_error = NULL;
   g_autoptr (GVariant) result = NULL;
   GsAppList *install_list = g_task_get_task_data (task);
@@ -579,7 +576,6 @@ fdroid_install_app_cb (GObject *source_object,
   }
 
   gs_app_set_state (app, GS_APP_STATE_INSTALLED);
-  gs_plugin_updates_changed (GS_PLUGIN (self));
   g_task_return_boolean (task, TRUE);
 }
 
@@ -730,7 +726,6 @@ fdroid_uninstall_app_cb (GObject *source_object,
                          gpointer user_data)
 {
   g_autoptr (GTask) task = g_steal_pointer (&user_data);
-  GsPluginAndroid *self = GS_PLUGIN_ANDROID (g_task_get_source_object (task));
   g_autoptr (GError) local_error = NULL;
   g_autoptr (GVariant) result = NULL;
   GsApp *app = g_task_get_task_data (task);
@@ -744,7 +739,6 @@ fdroid_uninstall_app_cb (GObject *source_object,
   }
 
   gs_app_set_state (app, GS_APP_STATE_AVAILABLE);
-  gs_plugin_updates_changed (GS_PLUGIN (self));
   g_task_return_boolean (task, TRUE);
 }
 
