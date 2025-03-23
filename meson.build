@@ -7,7 +7,7 @@ project(
 
 gnome_software_dep = dependency(
   'gnome-software',
-  version: '>=46.0',
+  version: '>=48.0',
   fallback: ['gnome-software', 'libgnomesoftware_dep'],
   default_options: [
     'malcontent=false',
@@ -23,7 +23,7 @@ gnome_software_dep = dependency(
 )
 plugin_install_dir = gnome_software_dep.get_variable(
   'plugindir',
-  default_value: '/usr/lib/aarch64-linux-gnu/gnome-software/plugins-21',
+  default_value: '/usr/lib/aarch64-linux-gnu/gnome-software/plugins-22',
 )
 
 cargs = [
