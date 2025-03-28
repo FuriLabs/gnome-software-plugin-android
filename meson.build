@@ -21,9 +21,11 @@ gnome_software_dep = dependency(
     'sysprof=disabled',
   ],
 )
+
+arch_triplet = run_command('gcc', '-dumpmachine', check: true).stdout().strip()
 plugin_install_dir = gnome_software_dep.get_variable(
   'plugindir',
-  default_value: '/usr/lib/aarch64-linux-gnu/gnome-software/plugins-22',
+  default_value: '/usr/lib/@0@/gnome-software/plugins-22'.format(arch_triplet),
 )
 
 cargs = [
