@@ -109,6 +109,8 @@ static void
 gs_plugin_android_refresh_metadata_async (GsPlugin *plugin,
                                           guint64 cache_age_secs,
                                           GsPluginRefreshMetadataFlags flags,
+                                          GsPluginEventCallback event_callback,
+                                          void *event_user_data,
                                           GCancellable *cancellable,
                                           GAsyncReadyCallback callback,
                                           gpointer user_data)
@@ -121,7 +123,6 @@ gs_plugin_android_refresh_metadata_async (GsPlugin *plugin,
 
   g_debug ("Refreshing repositories");
 
-  gs_plugin_status_update (plugin, NULL, GS_PLUGIN_STATUS_DOWNLOADING);
   g_dbus_proxy_call (self->fdroid_proxy,
                      "UpdateCache",
                      g_variant_new ("()"),
@@ -312,7 +313,7 @@ fdroid_get_installed_apps_cb (GObject *source_object,
       gs_app_set_kind (app, AS_COMPONENT_KIND_DESKTOP_APP);
       gs_app_set_scope (app, AS_COMPONENT_SCOPE_SYSTEM);
       gs_app_set_bundle_kind (app, AS_BUNDLE_KIND_PACKAGE);
-      gs_app_add_quirk (app, GS_APP_QUIRK_HAS_SOURCE);
+      gs_app_add_quirk (app, GS_APP_QUIRK_LOCAL_HAS_REPOSITORY);
       gs_app_set_allow_cancel (app, FALSE);
       gs_app_set_management_plugin (app, GS_PLUGIN (self));
       gs_app_add_kudo (app, GS_APP_KUDO_SANDBOXED_SECURE);
@@ -416,7 +417,7 @@ fdroid_search_cb (GObject *source_object,
     gs_app_set_kind (app, AS_COMPONENT_KIND_DESKTOP_APP);
     gs_app_set_bundle_kind (app, AS_BUNDLE_KIND_PACKAGE);
     gs_app_set_scope (app, AS_COMPONENT_SCOPE_SYSTEM);
-    gs_app_add_quirk (app, GS_APP_QUIRK_HAS_SOURCE);
+    gs_app_add_quirk (app, GS_APP_QUIRK_LOCAL_HAS_REPOSITORY);
     gs_app_set_metadata (app, "GnomeSoftware::Creator",
                          gs_plugin_get_name (GS_PLUGIN (self)));
     gs_app_set_management_plugin (app, GS_PLUGIN (self));
@@ -461,6 +462,8 @@ static void
 gs_plugin_android_list_apps_async (GsPlugin *plugin,
                                    GsAppQuery *query,
                                    GsPluginListAppsFlags flags,
+                                   GsPluginEventCallback event_callback,
+                                   void *event_user_data,
                                    GCancellable *cancellable,
                                    GAsyncReadyCallback callback,
                                    gpointer user_data)
@@ -468,7 +471,7 @@ gs_plugin_android_list_apps_async (GsPlugin *plugin,
   GsPluginAndroid *self = GS_PLUGIN_ANDROID (plugin);
   g_autoptr (GTask) task = NULL;
   GsAppQueryTristate is_installed = GS_APP_QUERY_TRISTATE_UNSET;
-  GsAppQueryTristate is_source = GS_APP_QUERY_TRISTATE_UNSET;
+  const AsComponentKind *component_kinds = NULL;
   GsAppQueryTristate is_for_updates = GS_APP_QUERY_TRISTATE_UNSET;
   const gchar * const *keywords = NULL;
 
@@ -476,7 +479,7 @@ gs_plugin_android_list_apps_async (GsPlugin *plugin,
   g_task_set_source_tag (task, gs_plugin_android_list_apps_async);
 
   if (query != NULL) {
-    is_source = gs_app_query_get_is_source (query);
+    component_kinds = gs_app_query_get_component_kinds (query);
     is_installed = gs_app_query_get_is_installed (query);
     is_for_updates = gs_app_query_get_is_for_update (query);
     keywords = gs_app_query_get_keywords (query);
@@ -484,7 +487,7 @@ gs_plugin_android_list_apps_async (GsPlugin *plugin,
 
   /* Currently only support one query type at a time */
   if (gs_app_query_get_n_properties_set (query) != 1 ||
-      is_source == GS_APP_QUERY_TRISTATE_FALSE ||
+      (component_kinds != NULL && !gs_component_kind_array_contains (component_kinds, AS_COMPONENT_KIND_REPOSITORY)) ||
       is_installed == GS_APP_QUERY_TRISTATE_FALSE ||
       is_for_updates == GS_APP_QUERY_TRISTATE_FALSE) {
     g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
@@ -492,7 +495,7 @@ gs_plugin_android_list_apps_async (GsPlugin *plugin,
     return;
   }
 
-  if (is_source == GS_APP_QUERY_TRISTATE_TRUE) {
+  if (gs_component_kind_array_contains (component_kinds, AS_COMPONENT_KIND_REPOSITORY)) {
     g_debug ("Listing repositories");
     g_dbus_proxy_call (self->fdroid_proxy,
                        "GetRepositories",
@@ -593,6 +596,8 @@ gs_plugin_android_install_apps_async (GsPlugin *plugin,
                                       GsPluginInstallAppsFlags flags,
                                       GsPluginProgressCallback progress_callback,
                                       gpointer progress_user_data,
+                                      GsPluginEventCallback event_callback,
+                                      void *event_user_data,
                                       GsPluginAppNeedsUserActionCallback app_needs_user_action_callback,
                                       gpointer app_needs_user_action_data,
                                       GCancellable *cancellable,
@@ -695,6 +700,8 @@ static void
 gs_plugin_android_remove_repository_async (GsPlugin *plugin,
                                            GsApp *repo,
                                            GsPluginManageRepositoryFlags flags,
+                                           GsPluginEventCallback event_callback,
+                                           void *event_user_data,
                                            GCancellable *cancellable,
                                            GAsyncReadyCallback callback,
                                            gpointer user_data)
@@ -756,6 +763,8 @@ gs_plugin_android_uninstall_apps_async (GsPlugin *plugin,
                                         GsPluginUninstallAppsFlags flags,
                                         GsPluginProgressCallback progress_callback,
                                         gpointer progress_user_data,
+                                        GsPluginEventCallback event_callback,
+                                        void *event_user_data,
                                         GsPluginAppNeedsUserActionCallback app_needs_user_action_callback,
                                         gpointer app_needs_user_action_data,
                                         GCancellable *cancellable,
@@ -887,6 +896,8 @@ gs_plugin_android_update_apps_async (GsPlugin *plugin,
                                      GsPluginUpdateAppsFlags flags,
                                      GsPluginProgressCallback progress_callback,
                                      gpointer progress_user_data,
+                                     GsPluginEventCallback event_callback,
+                                     void *event_user_data,
                                      GsPluginAppNeedsUserActionCallback app_needs_user_action_callback,
                                      gpointer app_needs_user_action_data,
                                      GCancellable *cancellable,
@@ -904,8 +915,6 @@ gs_plugin_android_update_apps_async (GsPlugin *plugin,
     g_task_return_boolean (task, TRUE);
     return;
   }
-
-  gs_plugin_status_update (plugin, NULL, GS_PLUGIN_STATUS_WAITING);
 
   builder = g_variant_builder_new (G_VARIANT_TYPE ("as"));
   for (guint i = 0; i < gs_app_list_length (list); i++) {
