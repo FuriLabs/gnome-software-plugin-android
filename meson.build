@@ -7,7 +7,7 @@ project(
 
 gnome_software_dep = dependency(
   'gnome-software',
-  version: '>=48.0',
+  version: '>=49.0',
   fallback: ['gnome-software', 'libgnomesoftware_dep'],
   default_options: [
     'malcontent=false',
@@ -25,7 +25,7 @@ gnome_software_dep = dependency(
 arch_triplet = run_command('gcc', '-dumpmachine', check: true).stdout().strip()
 plugin_install_dir = gnome_software_dep.get_variable(
   'plugindir',
-  default_value: '/usr/lib/@0@/gnome-software/plugins-22'.format(arch_triplet),
+  default_value: '/usr/lib/@0@/gnome-software/plugins-23'.format(arch_triplet),
 )
 
 cargs = [
