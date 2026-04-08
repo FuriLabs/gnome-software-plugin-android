@@ -9,6 +9,7 @@ Build-Depends: debhelper-compat (= 13),
                gnome-software,
                libjson-glib-dev,
                libappstream-dev,
+               libzstd-dev,
                meson,
 Standards-Version: 4.7.0
 Vcs-Browser: https://github.com/furilabs/gnome-software-plugin-android
