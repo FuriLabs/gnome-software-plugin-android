@@ -19,9 +19,42 @@ struct _GsPluginAndroid
   GDBusProxy *fdroid_proxy;  /* Proxy for FuriOS Android Store */
   GsAppList *installed_apps;  /* List of installed apps */
   GsAppList *updatable_apps;  /* List of apps with updates */
+
+  /* Maps package_id → GsApp for all in-flight install/upgrade operations */
+  GHashTable               *active_package_map;
+  GsPluginProgressCallback  current_progress_callback;
+  gpointer                  current_progress_user_data;
 };
 
 G_DEFINE_TYPE (GsPluginAndroid, gs_plugin_android, GS_TYPE_PLUGIN);
+
+static void
+on_fdroid_dbus_signal (GDBusProxy  *proxy,
+                       const gchar *sender_name,
+                       const gchar *signal_name,
+                       GVariant    *parameters,
+                       gpointer     user_data)
+{
+  GsPluginAndroid *self = GS_PLUGIN_ANDROID (user_data);
+
+  if (g_strcmp0 (signal_name, "DownloadProgressChanged") == 0) {
+    const gchar *package_id = NULL;
+    gint32 progress = 0;
+    g_variant_get (parameters, "(&si)", &package_id, &progress);
+
+    GsApp *app = g_hash_table_lookup (self->active_package_map, package_id);
+    if (app != NULL) {
+      gs_app_set_progress (app, (guint) progress);
+      if (self->current_progress_callback != NULL)
+        self->current_progress_callback (GS_PLUGIN (self), (guint) progress, self->current_progress_user_data);
+    }
+  } else if (g_strcmp0 (signal_name, "InstallStatusChanged") == 0) {
+    const gchar *package_id = NULL;
+    const gchar *status = NULL;
+    g_variant_get (parameters, "(&s&s)", &package_id, &status);
+    g_debug ("Android install status for %s: %s", package_id, status);
+  }
+}
 
 static void
 fdroid_proxy_setup_cb (GObject      *source_object,
@@ -41,6 +74,9 @@ fdroid_proxy_setup_cb (GObject      *source_object,
 
   g_clear_object (&self->fdroid_proxy);
   self->fdroid_proxy = proxy;
+
+  g_signal_connect (self->fdroid_proxy, "g-signal",
+                    G_CALLBACK (on_fdroid_dbus_signal), self);
 
   g_task_return_boolean (task, TRUE);
 }
@@ -570,6 +606,11 @@ fdroid_install_app_cb (GObject *source_object,
   const gchar *package_name = gs_app_get_metadata_item (app, "android::package-name");
   g_debug ("Installed F-Droid app: %s", package_name);
 
+  GsPluginAndroid *self = GS_PLUGIN_ANDROID (g_task_get_source_object (task));
+  g_hash_table_remove_all (self->active_package_map);
+  self->current_progress_callback = NULL;
+  self->current_progress_user_data = NULL;
+
   result = g_dbus_proxy_call_finish (G_DBUS_PROXY (source_object), res, &local_error);
   if (result == NULL) {
     gs_app_set_state_recover (app);
@@ -653,6 +694,11 @@ gs_plugin_android_install_apps_async (GsPlugin *plugin,
   g_task_set_task_data (task, g_steal_pointer (&install_list), g_object_unref);
   GsApp *app = gs_app_list_index (g_task_get_task_data (task), 0);
   const gchar *package_name = gs_app_get_metadata_item (app, "android::package-name");
+
+  g_hash_table_remove_all (self->active_package_map);
+  g_hash_table_insert (self->active_package_map, g_strdup (package_name), g_object_ref (app));
+  self->current_progress_callback = progress_callback;
+  self->current_progress_user_data = progress_user_data;
 
   g_dbus_proxy_call (self->fdroid_proxy,
                      "Install",
@@ -858,6 +904,10 @@ fdroid_upgrade_packages_cb (GObject *source_object,
   GsAppList *list = g_task_get_task_data (task);
   gboolean success = FALSE;
 
+  g_hash_table_remove_all (self->active_package_map);
+  self->current_progress_callback = NULL;
+  self->current_progress_user_data = NULL;
+
   result = g_dbus_proxy_call_finish (G_DBUS_PROXY (source_object), res, &local_error);
   if (result == NULL) {
     g_dbus_error_strip_remote_error (local_error);
@@ -916,6 +966,10 @@ gs_plugin_android_update_apps_async (GsPlugin *plugin,
     return;
   }
 
+  g_hash_table_remove_all (self->active_package_map);
+  self->current_progress_callback = progress_callback;
+  self->current_progress_user_data = progress_user_data;
+
   builder = g_variant_builder_new (G_VARIANT_TYPE ("as"));
   for (guint i = 0; i < gs_app_list_length (list); i++) {
     GsApp *app = gs_app_list_index (list, i);
@@ -924,6 +978,7 @@ gs_plugin_android_update_apps_async (GsPlugin *plugin,
       g_debug ("Adding package to upgrade: %s", package_name);
       g_variant_builder_add (builder, "s", package_name);
       gs_app_set_state (app, GS_APP_STATE_INSTALLING);
+      g_hash_table_insert (self->active_package_map, g_strdup (package_name), g_object_ref (app));
     }
   }
 
@@ -949,6 +1004,8 @@ gs_plugin_android_init (GsPluginAndroid *self)
 
   self->installed_apps = gs_app_list_new ();
   self->updatable_apps = gs_app_list_new ();
+  self->active_package_map = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                    g_free, g_object_unref);
 }
 
 static void
@@ -959,6 +1016,7 @@ gs_plugin_android_dispose (GObject *object)
   g_clear_object (&self->fdroid_proxy);
   g_clear_object (&self->installed_apps);
   g_clear_object (&self->updatable_apps);
+  g_clear_pointer (&self->active_package_map, g_hash_table_unref);
 
   G_OBJECT_CLASS (gs_plugin_android_parent_class)->dispose (object);
 }
