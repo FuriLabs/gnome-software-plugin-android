@@ -39,6 +39,7 @@ gobject_dep = dependency('gobject-2.0')
 gio_dep = dependency('gio-2.0')
 appstream_dep = dependency('appstream')
 json_glib_dep = dependency('json-glib-1.0')
+gdk_pixbuf_dep = dependency('gdk-pixbuf-2.0')
 
 plugin_android_lib = shared_library(
   'gs_plugin_android',
@@ -53,6 +54,7 @@ plugin_android_lib = shared_library(
     gio_dep,
     appstream_dep,
     json_glib_dep,
+    gdk_pixbuf_dep,
   ],
 )
 
