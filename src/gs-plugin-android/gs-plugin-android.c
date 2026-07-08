@@ -957,6 +957,7 @@ gs_plugin_android_update_apps_async (GsPlugin *plugin,
   GsPluginAndroid *self = GS_PLUGIN_ANDROID (plugin);
   g_autoptr (GTask) task = NULL;
   g_autoptr (GVariantBuilder) builder = NULL;
+  g_autoptr (GsAppList) own_apps = gs_app_list_new ();
 
   task = g_task_new (plugin, cancellable, callback, user_data);
   g_task_set_source_tag (task, gs_plugin_android_update_apps_async);
@@ -979,10 +980,27 @@ gs_plugin_android_update_apps_async (GsPlugin *plugin,
       g_variant_builder_add (builder, "s", package_name);
       gs_app_set_state (app, GS_APP_STATE_INSTALLING);
       g_hash_table_insert (self->active_package_map, g_strdup (package_name), g_object_ref (app));
+      gs_app_list_add (own_apps, app);
     }
   }
 
-  g_task_set_task_data (task, g_object_ref (list), g_object_unref);
+  /* This vfunc is called for every update job, including ones with no
+   * Android apps (e.g. flatpaks). Calling UpgradePackages anyway would
+   * emit updates-changed from the reply callback while another plugin's
+   * update is still running, which makes the Updates page reload and
+   * go blank mid-update. */
+  if (gs_app_list_length (own_apps) == 0) {
+    g_debug ("No Android apps in update list, nothing to do");
+    self->current_progress_callback = NULL;
+    self->current_progress_user_data = NULL;
+    g_task_return_boolean (task, TRUE);
+    return;
+  }
+
+  /* Only our own apps: update jobs run all plugins in parallel on the same
+   * list, so the completion callback must not touch apps still being
+   * updated by other plugins (e.g. flatpaks). */
+  g_task_set_task_data (task, g_steal_pointer (&own_apps), g_object_unref);
 
   g_dbus_proxy_call (self->fdroid_proxy,
                      "UpgradePackages",
