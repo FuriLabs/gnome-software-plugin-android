@@ -6,11 +6,40 @@
 
 #include "gs-plugin-android.h"
 #include <appstream.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <json-glib/json-glib.h>
 #include <glib/gi18n.h>
 #include <gnome-software.h>
 #include <gs-app-list.h>
 #include <gs-app-query.h>
+
+/* Prefer the icon store-provider cached on disk: it is usable at first
+ * paint, unlike a GsRemoteIcon, which is skipped until the icon downloader
+ * fetches it and GsAppRow only repaints on state changes. */
+static void
+gs_plugin_android_app_add_icon (GsApp *app,
+                                const gchar *icon_path,
+                                const gchar *icon_url)
+{
+  if (icon_path != NULL && *icon_path != '\0') {
+    gint width = 0;
+    gint height = 0;
+    if (gdk_pixbuf_get_file_info (icon_path, &width, &height) != NULL && width > 0) {
+      g_autoptr (GFile) file = g_file_new_for_path (icon_path);
+      g_autoptr (GIcon) icon = g_file_icon_new (file);
+      gs_icon_set_width (icon, (guint) width);
+      gs_icon_set_height (icon, (guint) height);
+      gs_app_add_icon (app, icon);
+      return;
+    }
+  }
+
+  if (icon_url != NULL &&
+      (g_str_has_prefix (icon_url, "http://") || g_str_has_prefix (icon_url, "https://"))) {
+    g_autoptr (GIcon) icon = gs_remote_icon_new (icon_url);
+    gs_app_add_icon (app, icon);
+  }
+}
 
 struct _GsPluginAndroid
 {
@@ -250,6 +279,14 @@ fdroid_get_upgradable_cb (GObject *source_object,
     const gchar *available_version = NULL;
     const gchar *repository = NULL;
     const gchar *package_info = NULL;
+    const gchar *summary = NULL;
+    const gchar *description = NULL;
+    const gchar *license = NULL;
+    const gchar *author = NULL;
+    const gchar *web_url = NULL;
+    const gchar *icon_url = NULL;
+    const gchar *icon_path = NULL;
+    guint64 size_download = 0;
 
     dict = g_variant_dict_new (child);
     g_variant_dict_lookup (dict, "packageName", "&s", &package_name);
@@ -259,10 +296,20 @@ fdroid_get_upgradable_cb (GObject *source_object,
     g_variant_dict_lookup (dict, "availableVersion", "&s", &available_version);
     g_variant_dict_lookup (dict, "repository", "&s", &repository);
     g_variant_dict_lookup (dict, "package", "&s", &package_info);
+    g_variant_dict_lookup (dict, "summary", "&s", &summary);
+    g_variant_dict_lookup (dict, "description", "&s", &description);
+    g_variant_dict_lookup (dict, "license", "&s", &license);
+    g_variant_dict_lookup (dict, "author", "&s", &author);
+    g_variant_dict_lookup (dict, "web_url", "&s", &web_url);
+    g_variant_dict_lookup (dict, "icon_url", "&s", &icon_url);
+    g_variant_dict_lookup (dict, "icon_path", "&s", &icon_path);
+    g_variant_dict_lookup (dict, "size", "t", &size_download);
 
     if (package_name != NULL) {
       app = gs_app_new (id);
-      gs_app_set_kind (app, AS_COMPONENT_KIND_GENERIC);
+      /* DESKTOP_APP, not GENERIC: generic-updates merges GENERIC package
+       * updates into the anonymous "System Updates" group */
+      gs_app_set_kind (app, AS_COMPONENT_KIND_DESKTOP_APP);
       gs_app_set_scope (app, AS_COMPONENT_SCOPE_SYSTEM);
       gs_app_set_bundle_kind (app, AS_BUNDLE_KIND_PACKAGE);
       gs_app_set_allow_cancel (app, FALSE);
@@ -272,6 +319,25 @@ fdroid_get_upgradable_cb (GObject *source_object,
         gs_app_set_name (app, GS_APP_QUALITY_NORMAL, name);
       else
         gs_app_set_name (app, GS_APP_QUALITY_LOWEST, package_name);
+
+      /* the plugin loader drops DESKTOP_APP results without a summary */
+      if (summary != NULL && *summary != '\0')
+        gs_app_set_summary (app, GS_APP_QUALITY_NORMAL, summary);
+      else
+        gs_app_set_summary (app, GS_APP_QUALITY_LOWEST, gs_app_get_name (app));
+
+      if (description != NULL && *description != '\0')
+        gs_app_set_description (app, GS_APP_QUALITY_NORMAL, description);
+      if (license != NULL && *license != '\0')
+        gs_app_set_license (app, GS_APP_QUALITY_NORMAL, license);
+      if (author != NULL && *author != '\0')
+        gs_app_set_developer_name (app, author);
+      if (web_url != NULL && *web_url != '\0')
+        gs_app_set_url (app, AS_URL_KIND_HOMEPAGE, web_url);
+      if (size_download > 0)
+        gs_app_set_size_download (app, GS_SIZE_TYPE_VALID, size_download);
+
+      gs_plugin_android_app_add_icon (app, icon_path, icon_url);
 
       gs_app_set_metadata (app, "android::package-name", id);
       if (repository != NULL)
@@ -337,11 +403,27 @@ fdroid_get_installed_apps_cb (GObject *source_object,
     const gchar *package_name = NULL;
     const gchar *name = NULL;
     const gchar *id = NULL;
+    const gchar *version = NULL;
+    const gchar *summary = NULL;
+    const gchar *description = NULL;
+    const gchar *license = NULL;
+    const gchar *author = NULL;
+    const gchar *web_url = NULL;
+    const gchar *icon_url = NULL;
+    const gchar *icon_path = NULL;
 
     dict = g_variant_dict_new (child);
     g_variant_dict_lookup (dict, "packageName", "&s", &package_name);
     g_variant_dict_lookup (dict, "name", "&s", &name);
     g_variant_dict_lookup (dict, "id", "&s", &id);
+    g_variant_dict_lookup (dict, "versionName", "&s", &version);
+    g_variant_dict_lookup (dict, "summary", "&s", &summary);
+    g_variant_dict_lookup (dict, "description", "&s", &description);
+    g_variant_dict_lookup (dict, "license", "&s", &license);
+    g_variant_dict_lookup (dict, "author", "&s", &author);
+    g_variant_dict_lookup (dict, "web_url", "&s", &web_url);
+    g_variant_dict_lookup (dict, "icon_url", "&s", &icon_url);
+    g_variant_dict_lookup (dict, "icon_path", "&s", &icon_path);
 
     if (package_name != NULL) {
       app = gs_app_new (id);
@@ -358,6 +440,25 @@ fdroid_get_installed_apps_cb (GObject *source_object,
         gs_app_set_name (app, GS_APP_QUALITY_NORMAL, name);
       else
         gs_app_set_name (app, GS_APP_QUALITY_LOWEST, package_name);
+
+      /* the plugin loader drops DESKTOP_APP results without a summary */
+      if (summary != NULL && *summary != '\0')
+        gs_app_set_summary (app, GS_APP_QUALITY_NORMAL, summary);
+      else
+        gs_app_set_summary (app, GS_APP_QUALITY_LOWEST, gs_app_get_name (app));
+
+      if (version != NULL && *version != '\0')
+        gs_app_set_version (app, version);
+      if (description != NULL && *description != '\0')
+        gs_app_set_description (app, GS_APP_QUALITY_NORMAL, description);
+      if (license != NULL && *license != '\0')
+        gs_app_set_license (app, GS_APP_QUALITY_NORMAL, license);
+      if (author != NULL && *author != '\0')
+        gs_app_set_developer_name (app, author);
+      if (web_url != NULL && *web_url != '\0')
+        gs_app_set_url (app, AS_URL_KIND_HOMEPAGE, web_url);
+
+      gs_plugin_android_app_add_icon (app, icon_path, icon_url);
 
       gs_app_set_metadata (app, "android::package-name", package_name);
       gs_app_add_source (app, id);
@@ -420,6 +521,7 @@ fdroid_search_cb (GObject *source_object,
     const gchar *author;
     const gchar *web_url;
     const gchar *icon_url = NULL;
+    const gchar *icon_path = NULL;
     const gchar *repository;
     JsonObject *package;
     const gchar *version = NULL;
@@ -433,6 +535,8 @@ fdroid_search_cb (GObject *source_object,
     author = json_object_get_string_member (app_obj, "author");
     web_url = json_object_get_string_member (app_obj, "web_url");
     repository = json_object_get_string_member (app_obj, "repository");
+    if (json_object_has_member (app_obj, "icon_path"))
+      icon_path = json_object_get_string_member (app_obj, "icon_path");
 
     package = json_object_get_object_member (app_obj, "package");
     if (package) {
@@ -470,14 +574,7 @@ fdroid_search_cb (GObject *source_object,
     gs_app_set_url (app, AS_URL_KIND_HOMEPAGE, web_url);
     gs_app_add_kudo (app, GS_APP_KUDO_SANDBOXED_SECURE);
 
-    if (icon_url != NULL) {
-        if (!g_str_has_prefix (icon_url, "http://") && !g_str_has_prefix (icon_url, "https://")) {
-            g_debug ("App '%s' has invalid icon URL: %s", name, icon_url);
-        } else {
-            g_autoptr (GIcon) icon = gs_remote_icon_new (icon_url);
-            gs_app_add_icon (app, icon);
-        }
-    }
+    gs_plugin_android_app_add_icon (app, icon_path, icon_url);
 
     gs_app_set_state (app, is_installed ? GS_APP_STATE_INSTALLED : GS_APP_STATE_AVAILABLE);
     gs_app_list_add (list, app);
